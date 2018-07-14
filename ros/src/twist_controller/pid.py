@@ -1,3 +1,4 @@
+import rospy  ###BVG - WT
 
 MIN_NUM = float('-inf')
 MAX_NUM = float('inf')
