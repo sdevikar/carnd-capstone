@@ -11,8 +11,10 @@ from scipy.spatial import KDTree
 import tf
 import cv2
 import yaml
+import os
 
 STATE_COUNT_THRESHOLD = 3
+GENERATE_TRAIN_IMGS = False
 
 class TLDetector(object):
     def __init__(self):
@@ -53,6 +55,9 @@ class TLDetector(object):
         self.last_wp = -1
         self.state_count = 0
 
+        #training img file counter
+        self.train_img_count = 0
+
         rospy.spin()
 
     def pose_cb(self, msg):
@@ -68,6 +73,19 @@ class TLDetector(object):
 
         self.lights = msg.lights
 
+    def create_training_data(self, state):
+        # build file name
+        f_name = "sim_tl_{:03d}_{}.jpg".format(self.train_img_count, state)
+        dir = './data/train/sim'
+
+        if not os.path.exists(dir):
+            os.makedirs(dir)
+
+        cv_image = self.bridge.imgmsg_to_cv2(self.camera_image)
+        cv_image = cv_image[:, :, ::-1]
+        cv2.imwrite('{}/{}'.format(dir, f_name), cv_image)
+        self.train_img_count += 1
+
     def image_cb(self, msg):
         """Identifies red lights in the incoming camera image and publishes the index
             of the waypoint closest to the red light's stop line to /traffic_waypoint
@@ -78,6 +96,7 @@ class TLDetector(object):
         """
         self.has_image = True
         self.camera_image = msg
+
         light_wp, state = self.process_traffic_lights()
 
         '''
@@ -91,6 +110,11 @@ class TLDetector(object):
             self.state = state
         elif self.state_count >= STATE_COUNT_THRESHOLD:
             self.last_state = self.state
+
+            if GENERATE_TRAIN_IMGS:
+                # Store images and state for training data for simulator
+                self.create_training_data(state)
+
             light_wp = light_wp if state == TrafficLight.RED else -1
             self.last_wp = light_wp
             self.upcoming_red_light_pub.publish(Int32(light_wp))
