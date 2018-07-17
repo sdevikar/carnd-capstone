@@ -31,19 +31,19 @@ class WaypointUpdater(object):
     def __init__(self):
         rospy.init_node('waypoint_updater')
 
+        # TODO: Add other member variables you need below
+        self.base_lane = None
+        self.pose = None
+        self.stopline_wp_idx  = -1
+        self.waypoints_2d = None
+        self.waypoint_tree = None
+
         rospy.Subscriber('/current_pose', PoseStamped, self.pose_cb)
         rospy.Subscriber('/base_waypoints', Lane, self.waypoints_cb)
         rospy.Subscriber('/traffic_waypoint', Int32, self.traffic_cb)
 
         # no need to add /obstacle_waypoint subscriber since there will be no traffic
         self.final_waypoints_pub = rospy.Publisher('final_waypoints', Lane, queue_size=1)
-
-        # TODO: Add other member variables you need below
-        self.base_lane = None
-        self.pose = None
-        self.waypoints_2d = None
-        self.waypoint_tree = None
-        self.stopline_wp_idx  = -1
 
         self.loop()
 
@@ -95,6 +95,7 @@ class WaypointUpdater(object):
         farthest_idx = closest_idx + LOOKAHEAD_WPS
         base_waypoints = self.base_lane.waypoints[closest_idx:farthest_idx]
 
+        rospy.loginfo('generate_lane called - closest_idx:%d, farthest_idx:%d, stopline_wp_idx:%d', closest_idx, farthest_idx, self.stopline_wp_idx)
         # keep the base waypoints as final_waypoints if the traffic light is
         # not in sight or too far
         if (self.stopline_wp_idx == -1) or (self.stopline_wp_idx >= farthest_idx):
@@ -108,13 +109,14 @@ class WaypointUpdater(object):
     def decelerate_waypoints(self, waypoints, closest_idx):
         temp = []
         for i, wp in enumerate(waypoints):
+
             p = Waypoint()
-	    #position of the waypoint stays the same as base waypoint
+	        #position of the waypoint stays the same as base waypoint
             p.pose = wp.pose
 
             # calculate a stop waypoint so that car's nose stops at the stop waypoint
-            wpts_count_before_stopline = self.stopline_wp_idx - closest_idx;
-            wpts_count_before_stopline_to_nose = wpts_count_before_stopline - 2;
+            wpts_count_before_stopline = self.stopline_wp_idx - closest_idx
+            wpts_count_before_stopline_to_nose = wpts_count_before_stopline - 2
             stop_idx = max(wpts_count_before_stopline_to_nose, 0)
 
             #distance between current waypoint and intended stop line waypoint
@@ -143,6 +145,7 @@ class WaypointUpdater(object):
 
     def waypoints_cb(self, waypoints):
         # TODO: Implement
+        rospy.loginfo('Enter waypoints_cb')
         self.base_lane = waypoints
         if not self.waypoints_2d:
             # construct a list of 2d co-ordinates from the waypoints
@@ -151,6 +154,7 @@ class WaypointUpdater(object):
 
 
     def traffic_cb(self, msg):
+        rospy.loginfo('Enter traffic_cb')
         self.stopline_wp_idx = msg.data
 
     def obstacle_cb(self, msg):
