@@ -24,12 +24,14 @@ as well as to verify your TL classifier.
 TODO (for Yousuf and Aaron): Stopline location for each traffic light.
 '''
 
-LOOKAHEAD_WPS = 200 # Number of waypoints we will publish. You can change this number
+#LOOKAHEAD_WPS = 200 # Number of waypoints we will publish. You can change this number
+LOOKAHEAD_WPS = 75 # Number of waypoints we will publish. You can change this number
 MAX_DECEL = .5
 
 class WaypointUpdater(object):
     def __init__(self):
-        rospy.init_node('waypoint_updater')
+        #rospy.init_node('waypoint_updater')
+        rospy.init_node('waypoint_updater',log_level=rospy.DEBUG)
 
         # TODO: Add other member variables you need below
         self.base_lane = None
@@ -49,7 +51,8 @@ class WaypointUpdater(object):
 
 
     def loop(self):
-        rate = rospy.Rate(50)
+        #rate = rospy.Rate(50)
+        rate = rospy.Rate(30)
         while not rospy.is_shutdown():
             if self.pose and self.base_lane:
                 self.publish_waypoints()
@@ -93,20 +96,23 @@ class WaypointUpdater(object):
 
         closest_idx = self.get_closest_waypoint_idx()
         farthest_idx = closest_idx + LOOKAHEAD_WPS
+        #sdevikar: experimental
         base_waypoints = self.base_lane.waypoints[closest_idx:farthest_idx]
 
-        rospy.loginfo('generate_lane called - closest_idx:%d, farthest_idx:%d, stopline_wp_idx:%d', closest_idx, farthest_idx, self.stopline_wp_idx)
+        #rospy.logdebug('\nsdevikar: generate_lane called - closest_idx:%d, farthest_idx:%d, stopline_wp_idx:%d', closest_idx, farthest_idx, self.stopline_wp_idx)
         # keep the base waypoints as final_waypoints if the traffic light is
         # not in sight or too far
         if (self.stopline_wp_idx == -1) or (self.stopline_wp_idx >= farthest_idx):
             lane.waypoints = base_waypoints
         else:
             # or else, decelerate_waypoint velocities accordingly
+            #rospy.logdebug('\nsdevikar: decelerating!!')
             lane.waypoints = self.decelerate_waypoints(base_waypoints, closest_idx)
 
         return lane
 
     def decelerate_waypoints(self, waypoints, closest_idx):
+        #rospy.logdebug('\nsdevikar: Enter decelerate_waypoints with waypoints length:%d ', len(waypoints))
         temp = []
         for i, wp in enumerate(waypoints):
 
@@ -116,8 +122,12 @@ class WaypointUpdater(object):
 
             # calculate a stop waypoint so that car's nose stops at the stop waypoint
             wpts_count_before_stopline = self.stopline_wp_idx - closest_idx
-            wpts_count_before_stopline_to_nose = wpts_count_before_stopline - 2
+            wpts_count_before_stopline_to_nose = wpts_count_before_stopline - 3
             stop_idx = max(wpts_count_before_stopline_to_nose, 0)
+
+            #rospy.logdebug('\nsdevikar: stop index turns out to be:%d ', stop_idx)
+            #rospy.logdebug('\nsdevikar: calculating distance between wp1:%d and wp2:%d ', i, stop_idx)
+
 
             #distance between current waypoint and intended stop line waypoint
             dist = self.distance(waypoints, i, stop_idx)
@@ -145,7 +155,7 @@ class WaypointUpdater(object):
 
     def waypoints_cb(self, waypoints):
         # TODO: Implement
-        rospy.loginfo('Enter waypoints_cb')
+        #rospy.logdebug('\nsdevikar: Enter waypoints_cb. Number of waypoints: %d',len(waypoints.waypoints))
         self.base_lane = waypoints
         if not self.waypoints_2d:
             # construct a list of 2d co-ordinates from the waypoints
@@ -154,7 +164,7 @@ class WaypointUpdater(object):
 
 
     def traffic_cb(self, msg):
-        rospy.loginfo('Enter traffic_cb')
+        #rospy.logdebug('\nsdevikar: logdebug: Enter traffic_cb')
         self.stopline_wp_idx = msg.data
 
     def obstacle_cb(self, msg):
