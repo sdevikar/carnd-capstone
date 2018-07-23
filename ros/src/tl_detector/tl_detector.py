@@ -13,6 +13,7 @@ import cv2
 import yaml
 import os
 
+SIMULATOR = True
 STATE_COUNT_THRESHOLD = 3
 GENERATE_TRAIN_IMGS = False
 
@@ -94,6 +95,7 @@ class TLDetector(object):
             msg (Image): image from car-mounted camera
 
         """
+        rospy.loginfo("=== image_cb() =============================")
         self.has_image = True
         self.camera_image = msg
 
@@ -118,8 +120,10 @@ class TLDetector(object):
             light_wp = light_wp if state == TrafficLight.RED else -1
             self.last_wp = light_wp
             self.upcoming_red_light_pub.publish(Int32(light_wp))
+            rospy.loginfo("publish upcoming red light wp index: {}".format(light_wp))
         else:
             self.upcoming_red_light_pub.publish(Int32(self.last_wp))
+            rospy.loginfo("publish upcoming red light wp index: {}".format(self.last_wp))
         self.state_count += 1
 
     def get_closest_waypoint(self, x, y):
@@ -156,21 +160,37 @@ class TLDetector(object):
         # state is available only in simulator and will NOT be available
         # in real live test track
         #rospy.loginfo('Light state: %s', light.state)
-        return light.state
+        #return light.state
 
 
-        """
+
         ### UNCOMMENT THIS BLOCK FOR REAL LIGHT CLASSIFICATION ###
         ### WHEN CLASSIFIER IS AVAILABLE                       ###
         if(not self.has_image):
             self.prev_light_loc = None
             return False
 
-        cv_image = self.bridge.imgmsg_to_cv2(self.camera_image, "bgr8")
+        cv_image = self.bridge.imgmsg_to_cv2(self.camera_image)
+        cv_image = cv_image[:, :, ::-1] # swith layer to RGB from BGR
+        classified_status = self.light_classifier.get_classification(cv_image)
 
-        #Get classification
-        return self.light_classifier.get_classification(cv_image)
-        """
+        if SIMULATOR:
+            rospy.loginfo("Sim GT status:     {}".format(
+                self.light_label(light.state)))
+
+        rospy.loginfo("Classified status: {}".format(
+            self.light_label(classified_status)))
+
+        return classified_status
+
+    def light_label(self, state):
+        if state == TrafficLight.RED:
+            return "RED"
+        elif state == TrafficLight.YELLOW:
+            return "YELLOW"
+        elif state == TrafficLight.GREEN:
+            return "GREEN"
+        return "UNKNOWN"
 
     def process_traffic_lights(self):
         """Finds closest visible traffic light, if one exists, and determines its
@@ -190,6 +210,7 @@ class TLDetector(object):
             car_wp_indx = self.get_closest_waypoint(self.pose.pose.position.x,
                                                     self.pose.pose.position.y)
 
+        #rospy.loginfo("== process_traffic_lights() ==================")
         #Find the closest visible traffic light (if one exists)
         indx_dist = len(self.waypoints.waypoints)
         for i, light in enumerate(self.lights):
@@ -199,6 +220,9 @@ class TLDetector(object):
                                                 stop_line_pose[1])
             # Find the closest stop line waypoint index
             d = wp_indx - car_wp_indx
+
+            #rospy.loginfo("light: {}, car_wp_indx: {}, wp_indx: {}, d: {}".format(
+            #    i, car_wp_indx, wp_indx, d))
             if d >= 0 and d < indx_dist:
                 indx_dist = d
                 closest_upcoming_light = light
@@ -206,6 +230,9 @@ class TLDetector(object):
 
         if closest_upcoming_light:
             state = self.get_light_state(closest_upcoming_light)
+            rospy.loginfo(">> closest stop_line_wp_indx: {}, state: {}".format(
+                stop_line_wp_indx, self.light_label(state)))
+
             return stop_line_wp_indx, state
 
         return -1, TrafficLight.UNKNOWN
