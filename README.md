@@ -7,13 +7,13 @@ This project is the final project of term 3 of the Udacity Self-Driving Car Engi
 ### Team: Driveline
 
 #### Members: 
-Name | Slack     
------| -----
-Zeng Yang [Team Lead] | @zeyang
-Allen Lau | @allen8r
-Barend van Graan (a.k.a Bennie) | @g4udevil
-Swapnil Devikar | @swap_1712
-Praveen Sukumaran | @praveen  
+Name | e-mail|Slack     
+-----| ----- | --------
+Zeng Yang [Team Lead] | zengyang2003@gmail.com | @zeyang
+Allen Lau | allen.c.lau@gmail.com | @allen8r
+Barend van Graan (a.k.a Bennie) | g4udevil@gmail.com | @g4udevil
+Swapnil Devikar | swap1712@gmail.com |@swap_1712
+Praveen Sukumaran | praveen.84@gmail.com | @praveen  
 
 ### System Architecture
 The following system architecture diagram shows the ROS nodes and topics used in the project.
