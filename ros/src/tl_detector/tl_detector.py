@@ -58,6 +58,7 @@ class TLDetector(object):
 
         #training img file counter
         self.train_img_count = 0
+        self.visual_count = 0
 
         rospy.spin()
 
@@ -125,6 +126,18 @@ class TLDetector(object):
             self.upcoming_red_light_pub.publish(Int32(self.last_wp))
             rospy.loginfo("publish upcoming red light wp index: {}".format(self.last_wp))
         self.state_count += 1
+
+        if TLClassifier.VISUALIZE:
+            f_name = "tl_{:03d}_{}.jpg".format(light_wp, self.light_label(state))
+            dir = './data/visual'
+            if not os.path.exists(dir):
+                os.makedirs(dir)
+            pathname = '{}/{}'.format(dir, f_name)
+            if os.path.exists(pathname):
+                pathname = '{}/{}_{}'.format(dir, self.visual_count, f_name)
+            tl_image = self.light_classifier.visualize_image
+            cv2.imwrite(pathname, tl_image)
+            self.visual_count += 1
 
     def get_closest_waypoint(self, x, y):
         """Identifies the closest path waypoint to the given position

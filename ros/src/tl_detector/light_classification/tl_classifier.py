@@ -9,6 +9,8 @@ import cv2
 import rospy
 
 class TLClassifier(object):
+    VISUALIZE = False
+
     def __init__(self):
         self.detection_graph = None
         self.detection_boxes = None
@@ -21,7 +23,11 @@ class TLClassifier(object):
         self.b = None
         self.g = None
 
-        MODEL_NAME = 'rfcn_resnet101_coco_2017_11_08'
+        # NOTE: inference times in the comments for each model is based on run time on my particular
+        # local machine setup. So time will vary depending on the resources of the running environment.
+        #MODEL_NAME = 'rfcn_resnet101_coco_2017_11_08' # inference takes ~ 7~11 sec per evaluation...way too slow
+        #MODEL_NAME = 'faster_rcnn_inception_v2_coco_2017_11_08' # inference takes ~ 5 sec per evaluation...better
+        MODEL_NAME = 'ssd_inception_v2_coco_2017_11_17' # inference takes ~ 1-2 sec per evaluation...much better!
         PATH_TO_CKPT = MODEL_NAME + '/frozen_inference_graph.pb'
         MODEL_FILE = "{}.tar.gz".format(MODEL_NAME)
         DOWNLOAD_BASE = \
@@ -135,13 +141,11 @@ class TLClassifier(object):
             width = image_np.shape[1]
             # box values are normalized so need to denormalize them
             # to get the right coordinates from the image
-            TRIM = 2
+            TRIM = 3
             ymin = int(box[0] * height) + TRIM
             xmin = int(box[1] * width) + TRIM
             ymax = int(box[2] * height) - TRIM
             xmax = int(box[3] * width) - TRIM
-
-
 
             tl_box = image_np[ymin+TRIM:ymax-TRIM, xmin+TRIM:xmax-TRIM]
             tl_box = tl_box.astype(np.uint8)
@@ -150,37 +154,43 @@ class TLClassifier(object):
             gray_tl = cv2.cvtColor(tl_box, cv2.COLOR_RGB2GRAY)
 
             ### Introduce a GaussianBlur to remove high frequency noise
-            BLUR_RADIUS = 41
+            BLUR_RADIUS = 45
             gray_tl = cv2.GaussianBlur(gray_tl, (BLUR_RADIUS, BLUR_RADIUS), 0)
             (minVal, maxVal, minLoc, maxLoc) = cv2.minMaxLoc(gray_tl)
 
             ### Save visualzed image of detected traffic light,
             ### highlighting the region around the brightest pixel
             tl_copy = tl_box_copy.copy()
-            cv2.circle(tl_copy, maxLoc, 15, (0, 0, 255), 2)
+            marker_radius = int(0.34 * (xmax - xmin))
+            cv2.circle(tl_copy, maxLoc, marker_radius, (255, 0, 0), 2)
             self.visualize_image = tl_copy
 
-            # coordinates of the brightest pixel (relative the the box image)
+            # coordinates of the brightest pixel (relative the the trimmed box image)
             y, x = maxLoc
-            #print(tl_copy[x, y, :])
-
+            rospy.loginfo("brightest pixel at: x={}, y={})".format(x,y))
             color = tl_copy[x, y, :]
             self.r = color[0]
             self.g = color[1]
             self.b = color[2]
             rospy.loginfo("light color rgb: {}".format(color))
 
-            """
-            if self.is_red():
-                return TrafficLight.RED
-            elif self.is_yellow():
-                return TrafficLight.YELLOW
-            elif self.is_green():
-                return TrafficLight.GREEN
-            """
+            # When we have only a partial view of the traffic light; almost square
+            # Try to determine by the color components
+            if width / height*1.0 > 0.5:
+                if self.is_red():
+                    return TrafficLight.RED
+                elif self.is_yellow():
+                    return TrafficLight.YELLOW
+                elif self.is_green():
+                    return TrafficLight.GREEN
+
+            # When there is a vertical rectangular box
+            # Try to determine by the y placement in the box, assuming:
+            # top is red, middle is yellow, bottom is green
             box_height = ymax - ymin
-            top_third = box_height / 3
-            middle = box_height / 3 * 2
+            top_third = (box_height / 3.0)
+            middle = (box_height / 3.0) * 2
+
             if y < top_third:
                 return TrafficLight.RED
             elif y < middle and y >= top_third:
