@@ -5,6 +5,5 @@ devel
 
 profile.tmp
 
-*.pb
 *.tar.gz
 ros/src/tl_detector/data/

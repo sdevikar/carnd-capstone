@@ -13,7 +13,6 @@ import cv2
 import yaml
 import os
 
-SIMULATOR = True
 STATE_COUNT_THRESHOLD = 3
 GENERATE_TRAIN_IMGS = False
 
@@ -27,6 +26,7 @@ class TLDetector(object):
         self.waypoint_tree = None
         self.camera_image = None
         self.lights = []
+        self.is_site = None
 
         sub1 = rospy.Subscriber('/current_pose', PoseStamped, self.pose_cb)
         sub2 = rospy.Subscriber('/base_waypoints', Lane, self.waypoints_cb)
@@ -45,10 +45,13 @@ class TLDetector(object):
         config_string = rospy.get_param("/traffic_light_config")
         self.config = yaml.load(config_string)
 
+        self.is_site = self.config['is_site']
+        self.is_simulator = not self.is_site
+
         self.upcoming_red_light_pub = rospy.Publisher('/traffic_waypoint', Int32, queue_size=1)
 
         self.bridge = CvBridge()
-        self.light_classifier = TLClassifier()
+        self.light_classifier = TLClassifier(self.is_site)
         self.listener = tf.TransformListener()
 
         self.state = TrafficLight.UNKNOWN
@@ -185,16 +188,16 @@ class TLDetector(object):
 
         cv_image = self.bridge.imgmsg_to_cv2(self.camera_image)
         cv_image = cv_image[:, :, ::-1] # swith layer to RGB from BGR
-        classified_status = self.light_classifier.get_classification(cv_image)
+        classified_state = self.light_classifier.get_classification(cv_image)
 
-        if SIMULATOR:
-            rospy.loginfo("Sim GT status:     {}".format(
+        if self.is_simulator:
+            rospy.loginfo("Sim ground truth state: {}".format(
                 self.light_label(light.state)))
 
-        rospy.loginfo("Classified status: {}".format(
-            self.light_label(classified_status)))
+        rospy.loginfo("Classified state:       {}".format(
+            self.light_label(classified_state)))
 
-        return classified_status
+        return classified_state
 
     def light_label(self, state):
         if state == TrafficLight.RED:

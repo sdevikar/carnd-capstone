@@ -9,29 +9,37 @@ import cv2
 import rospy
 
 class TLClassifier(object):
-    VISUALIZE = False
+    VISUALIZE = True
 
-    def __init__(self):
+    def __init__(self, is_site):
         self.detection_graph = None
         self.detection_boxes = None
         self.detection_scores = None
         self.detection_classes = None
         self.visualize_image = None
-
-        ## color values from the traffic light
-        self.r = None
-        self.b = None
-        self.g = None
+        self.is_real = is_site
 
         # NOTE: inference times in the comments for each model is based on run time on my particular
         # local machine setup. So time will vary depending on the resources of the running environment.
         #MODEL_NAME = 'rfcn_resnet101_coco_2017_11_08' # inference takes ~ 7~11 sec per evaluation...way too slow
         #MODEL_NAME = 'faster_rcnn_inception_v2_coco_2017_11_08' # inference takes ~ 5 sec per evaluation...better
         MODEL_NAME = 'ssd_inception_v2_coco_2017_11_17' # inference takes ~ 1-2 sec per evaluation...much better!
-        PATH_TO_CKPT = MODEL_NAME + '/frozen_inference_graph.pb'
-        MODEL_FILE = "{}.tar.gz".format(MODEL_NAME)
-        DOWNLOAD_BASE = \
-            'http://download.tensorflow.org/models/object_detection/'
+        if self.is_real:
+            MODEL_NAME = 'ssd_inception_v2_coco_ud_capstone_real'
+            rospy.loginfo("In real site environment...use {}".format(MODEL_NAME))
+        else:
+            MODEL_NAME = 'ssd_inception_v2_coco_ud_capstone_sim'
+            rospy.loginfo("In simulator environment...use {}".format(MODEL_NAME))
+
+        PATH_TO_CKPT = 'light_classification/' + MODEL_NAME + '/frozen_inference_graph.pb'
+        #MODEL_FILE = "{}.tar.gz".format(MODEL_NAME)
+        #DOWNLOAD_BASE = \
+        #    'http://download.tensorflow.org/models/object_detection/'
+
+        """
+        # TODO: figure out how we make the models available
+        #   Do we store them git repo? or do we upload them
+        #   somewhere and have them hosted somewhere(google drive?)?
 
         ### Download the model file if not already there
         if not os.path.exists(MODEL_FILE):
@@ -43,8 +51,9 @@ class TLClassifier(object):
                 file_name = os.path.basename(file.name)
                 if 'frozen_inference_graph.pb' in file_name:
                     tar_file.extract(file, os.getcwd())
-
-        ### Load frozen Tensorflow model
+        """
+        rospy.loginfo('cwd: {}'.format(os.getcwd()))
+        ### Load frozen Tensorflow model graph
         self.detection_graph = tf.Graph()
         with self.detection_graph.as_default():
             od_graph_def = tf.GraphDef()
@@ -53,21 +62,6 @@ class TLClassifier(object):
                 od_graph_def.ParseFromString(serialized_graph)
                 tf.import_graph_def(od_graph_def, name='')
 
-    """
-    def load_image_into_numpy_array(self, image):
-        (im_width, im_height) = image.size
-        return np.array(
-            image.getdata()).reshape((im_height, im_width, 3)).astype(np.uint8)
-    """
-
-    def is_yellow(self):
-        return self.r > 200 and self.g > 200 and self.b < 80
-
-    def is_green(self):
-        return self.r < 70 and self.g > 120 and self.b < 90
-
-    def is_red(self):
-        return self.r > 120 and self.g < 50 and self.b < 50
 
     def run_inference_for_single_image(self, image):
         with self.detection_graph.as_default():
@@ -89,9 +83,12 @@ class TLClassifier(object):
                 image_tensor = \
                     tf.get_default_graph().get_tensor_by_name('image_tensor:0')
 
-                # Run inference
+                ### Run inference
+                # Expand dimensions since the model expects
+                # images to have shape: [1, None, None, 3]
+                image_np_expanded = np.expand_dims(image, axis=0)
                 output_dict = sess.run(tensor_dict,
-                             feed_dict={image_tensor: np.expand_dims(image, 0)})
+                             feed_dict={image_tensor: image_np_expanded})
 
                 # all outputs are float32 numpy arrays,
                 # so convert types as appropriate
@@ -111,91 +108,48 @@ class TLClassifier(object):
             int: ID of traffic light color (specified in styx_msgs/TrafficLight)
 
         """
-        #image_np = self.load_image_into_numpy_array(image)
         image_np = np.asarray(image, dtype="int32")
-        #rospy.loginfo("get_classification() image_np.shape: {}".format(
-        #    image_np.shape))
-        # Expand dimensions since the model expects images to have shape: [1, None, None, 3]
-        image_np_expanded = np.expand_dims(image_np, axis=0)
 
         ### Detect traffic lights ###
         self.run_inference_for_single_image(image_np)
 
         # Get the detected box with the highest score over minimum threshold
         MIN_THRESHOLD = 0.50
-        CLASS_TRAFFIC_LIGHT = 10
 
         max_score_indx = np.argmax(self.detection_scores)
         score = self.detection_scores[max_score_indx]
         clazz = self.detection_classes[max_score_indx]
 
-        if score > MIN_THRESHOLD and clazz == CLASS_TRAFFIC_LIGHT:
-            box = self.detection_boxes[max_score_indx]
-            #print("box  : {}".format(box))
-            #print("class: {}".format(clazz))
-            #print("score: {}".format(score))
+        if score > MIN_THRESHOLD:
+            """
+            # TODO: use a function to return label by id
+            # From label_map.pbtxt used in training models
+            item {
+              id: 1
+              name: 'Green'
+            }
 
-            ### Determine color of the light ###
-            # box array ([ymin, xmin, ymax, xmax])
-            height = image_np.shape[0]
-            width = image_np.shape[1]
-            # box values are normalized so need to denormalize them
-            # to get the right coordinates from the image
-            TRIM = 3
-            ymin = int(box[0] * height) + TRIM
-            xmin = int(box[1] * width) + TRIM
-            ymax = int(box[2] * height) - TRIM
-            xmax = int(box[3] * width) - TRIM
+            item {
+              id: 2
+              name: 'Red'
+            }
 
-            tl_box = image_np[ymin+TRIM:ymax-TRIM, xmin+TRIM:xmax-TRIM]
-            tl_box = tl_box.astype(np.uint8)
+            item {
+              id: 3
+              name: 'Yellow'
+            }
 
-            tl_box_copy = tl_box.copy()
-            gray_tl = cv2.cvtColor(tl_box, cv2.COLOR_RGB2GRAY)
-
-            ### Introduce a GaussianBlur to remove high frequency noise
-            BLUR_RADIUS = 45
-            gray_tl = cv2.GaussianBlur(gray_tl, (BLUR_RADIUS, BLUR_RADIUS), 0)
-            (minVal, maxVal, minLoc, maxLoc) = cv2.minMaxLoc(gray_tl)
-
-            ### Save visualzed image of detected traffic light,
-            ### highlighting the region around the brightest pixel
-            tl_copy = tl_box_copy.copy()
-            marker_radius = int(0.34 * (xmax - xmin))
-            cv2.circle(tl_copy, maxLoc, marker_radius, (255, 0, 0), 2)
-            self.visualize_image = tl_copy
-
-            # coordinates of the brightest pixel (relative the the trimmed box image)
-            y, x = maxLoc
-            rospy.loginfo("brightest pixel at: x={}, y={})".format(x,y))
-            color = tl_copy[x, y, :]
-            self.r = color[0]
-            self.g = color[1]
-            self.b = color[2]
-            rospy.loginfo("light color rgb: {}".format(color))
-
-            # When we have only a partial view of the traffic light; almost square
-            # Try to determine by the color components
-            if width / height*1.0 > 0.5:
-                if self.is_red():
-                    return TrafficLight.RED
-                elif self.is_yellow():
-                    return TrafficLight.YELLOW
-                elif self.is_green():
-                    return TrafficLight.GREEN
-
-            # When there is a vertical rectangular box
-            # Try to determine by the y placement in the box, assuming:
-            # top is red, middle is yellow, bottom is green
-            box_height = ymax - ymin
-            top_third = (box_height / 3.0)
-            middle = (box_height / 3.0) * 2
-
-            if y < top_third:
-                return TrafficLight.RED
-            elif y < middle and y >= top_third:
-                return TrafficLight.YELLOW
-            elif y < box_height and y >= middle:
+            item {
+              id: 4
+              name: 'Unknown'
+            }
+            """
+            self.visualize_image = image_np
+            if clazz == 1:
                 return TrafficLight.GREEN
+            elif clazz == 2:
+                return TrafficLight.RED
+            elif clazz == 3:
+                return TrafficLight.YELLOW
 
         return TrafficLight.UNKNOWN
