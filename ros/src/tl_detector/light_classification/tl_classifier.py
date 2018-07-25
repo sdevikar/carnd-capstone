@@ -9,7 +9,7 @@ import cv2
 import rospy
 
 class TLClassifier(object):
-    VISUALIZE = True
+    VISUALIZE = False
 
     def __init__(self, is_site):
         self.detection_graph = None
