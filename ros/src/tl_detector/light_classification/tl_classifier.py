@@ -8,6 +8,9 @@ import zipfile
 import cv2
 import rospy
 
+from utils import label_map_util
+from utils import visualization_utils as vis_util
+
 class TLClassifier(object):
     VISUALIZE = False
 
@@ -18,12 +21,9 @@ class TLClassifier(object):
         self.detection_classes = None
         self.visualize_image = None
         self.is_real = is_site
+        self.label_map = None
+        self.category_index = None
 
-        # NOTE: inference times in the comments for each model is based on run time on my particular
-        # local machine setup. So time will vary depending on the resources of the running environment.
-        #MODEL_NAME = 'rfcn_resnet101_coco_2017_11_08' # inference takes ~ 7~11 sec per evaluation...way too slow
-        #MODEL_NAME = 'faster_rcnn_inception_v2_coco_2017_11_08' # inference takes ~ 5 sec per evaluation...better
-        MODEL_NAME = 'ssd_inception_v2_coco_2017_11_17' # inference takes ~ 1-2 sec per evaluation...much better!
         if self.is_real:
             MODEL_NAME = 'ssd_inception_v2_coco_ud_capstone_real'
             rospy.loginfo("In real site environment...use {}".format(MODEL_NAME))
@@ -31,12 +31,17 @@ class TLClassifier(object):
             MODEL_NAME = 'ssd_inception_v2_coco_ud_capstone_sim'
             rospy.loginfo("In simulator environment...use {}".format(MODEL_NAME))
 
-        PATH_TO_CKPT = 'light_classification/' + MODEL_NAME + '/frozen_inference_graph.pb'
+        #CLASSIFIER_BASE = 'light_classification'
+        CLASSIFIER_BASE = os.path.dirname(os.path.realpath(__file__))
+        PATH_TO_CKPT = CLASSIFIER_BASE + '/' + MODEL_NAME + '/frozen_inference_graph.pb'
+        PATH_TO_LABELS = CLASSIFIER_BASE + '/label_map.pbtxt'
+        NUM_CLASSES = 4
+
+        """
         #MODEL_FILE = "{}.tar.gz".format(MODEL_NAME)
         #DOWNLOAD_BASE = \
         #    'http://download.tensorflow.org/models/object_detection/'
 
-        """
         # TODO: figure out how we make the models available
         #   Do we store them git repo? or do we upload them
         #   somewhere and have them hosted somewhere(google drive?)?
@@ -52,7 +57,7 @@ class TLClassifier(object):
                 if 'frozen_inference_graph.pb' in file_name:
                     tar_file.extract(file, os.getcwd())
         """
-        rospy.loginfo('cwd: {}'.format(os.getcwd()))
+
         ### Load frozen Tensorflow model graph
         self.detection_graph = tf.Graph()
         with self.detection_graph.as_default():
@@ -62,8 +67,18 @@ class TLClassifier(object):
                 od_graph_def.ParseFromString(serialized_graph)
                 tf.import_graph_def(od_graph_def, name='')
 
+        ### Load label map
+        self.label_map = label_map_util.load_labelmap(PATH_TO_LABELS)
+        categories = label_map_util.convert_label_map_to_categories(self.label_map,
+            max_num_classes=NUM_CLASSES, use_display_name=True)
+        self.category_index = label_map_util.create_category_index(categories)
+
 
     def run_inference_for_single_image(self, image):
+        self.detection_boxes = None
+        self.detection_scores = None
+        self.detection_classes = None
+
         with self.detection_graph.as_default():
             with tf.Session() as sess:
                 # Get handles to input and output tensors
@@ -121,30 +136,19 @@ class TLClassifier(object):
         clazz = self.detection_classes[max_score_indx]
 
         if score > MIN_THRESHOLD:
-            """
-            # TODO: use a function to return label by id
-            # From label_map.pbtxt used in training models
-            item {
-              id: 1
-              name: 'Green'
-            }
 
-            item {
-              id: 2
-              name: 'Red'
-            }
+            vis_util.visualize_boxes_and_labels_on_image_array(
+                image_np,
+                np.squeeze(self.detection_boxes),
+                np.squeeze(self.detection_classes).astype(np.int32),
+                np.squeeze(self.detection_scores),
+                self.category_index,
+                use_normalized_coordinates=True,
+                min_score_thresh=MIN_THRESHOLD,
+                line_thickness=3)
 
-            item {
-              id: 3
-              name: 'Yellow'
-            }
-
-            item {
-              id: 4
-              name: 'Unknown'
-            }
-            """
             self.visualize_image = image_np
+
             if clazz == 1:
                 return TrafficLight.GREEN
             elif clazz == 2:
