@@ -5,8 +5,8 @@ import six.moves.urllib as urllib
 import tarfile
 import tensorflow as tf
 import zipfile
-import cv2
 import rospy
+import time
 
 from utils import label_map_util
 from utils import visualization_utils as vis_util
@@ -15,14 +15,17 @@ class TLClassifier(object):
     VISUALIZE = False
 
     def __init__(self, is_site):
+        self.is_real = is_site
         self.detection_graph = None
+        self.num_detections = None
         self.detection_boxes = None
         self.detection_scores = None
         self.detection_classes = None
         self.visualize_image = None
-        self.is_real = is_site
         self.label_map = None
         self.category_index = None
+        self.MIN_SCORE_THRESHOLD = 0.60
+        self.NUM_CLASSES = 4
 
         if self.is_real:
             MODEL_NAME = 'ssd_inception_v2_coco_ud_capstone_real'
@@ -31,11 +34,10 @@ class TLClassifier(object):
             MODEL_NAME = 'ssd_inception_v2_coco_ud_capstone_sim'
             rospy.loginfo("In simulator environment...use {}".format(MODEL_NAME))
 
-        #CLASSIFIER_BASE = 'light_classification'
         CLASSIFIER_BASE = os.path.dirname(os.path.realpath(__file__))
         PATH_TO_CKPT = CLASSIFIER_BASE + '/' + MODEL_NAME + '/frozen_inference_graph.pb'
         PATH_TO_LABELS = CLASSIFIER_BASE + '/label_map.pbtxt'
-        NUM_CLASSES = 4
+
 
         """
         #MODEL_FILE = "{}.tar.gz".format(MODEL_NAME)
@@ -70,11 +72,12 @@ class TLClassifier(object):
         ### Load label map
         self.label_map = label_map_util.load_labelmap(PATH_TO_LABELS)
         categories = label_map_util.convert_label_map_to_categories(self.label_map,
-            max_num_classes=NUM_CLASSES, use_display_name=True)
+            max_num_classes=self.NUM_CLASSES, use_display_name=True)
         self.category_index = label_map_util.create_category_index(categories)
 
 
     def run_inference_for_single_image(self, image):
+        self.num_detections = None
         self.detection_boxes = None
         self.detection_scores = None
         self.detection_classes = None
@@ -107,11 +110,48 @@ class TLClassifier(object):
 
                 # all outputs are float32 numpy arrays,
                 # so convert types as appropriate
+                self.num_detections = output_dict['num_detections'][0]
                 self.detection_boxes = output_dict['detection_boxes'][0]
                 self.detection_scores = output_dict['detection_scores'][0]
                 self.detection_classes = \
                     output_dict['detection_classes'][0].astype(np.uint8)
 
+
+    def predict_state(self):
+        """Since there can be multiple detections in any one image...
+            - Get the detected boxes with scores over minimum threshold.
+            - Add up scores for each classifications.
+            - Normalize by dividing total scores by total number of
+              detections with scores over the minimum threshold.
+            - Predicted classified state is the state with the highest
+              normalized score.
+        """
+        det_scores = { "Green": 0, "Red": 0, "Yellow": 0, "Unknown": 0}
+
+        det_count = 0
+        for i in range(0, self.num_detections):
+            det_score = self.detection_scores[i]
+            if det_score > self.MIN_SCORE_THRESHOLD:
+                det_state = self.detection_classes[i]
+                det_name = self.category_index[det_state]['name']
+                det_scores[det_name] += det_score
+                det_count += 1
+
+        max_det_score = 0
+        max_det_state = None
+        for key in det_scores.keys():
+            # Normalize the scores
+            if det_count > 0:
+                det_scores[key] /= (det_count * 1.0)
+            # See if the normalized score is the highest
+            if det_scores[key] > max_det_score:
+                max_det_score = det_scores[key]
+                max_det_state = key
+
+        rospy.loginfo(det_scores)
+        rospy.loginfo("Predicted state: {} Normalized scroe: {}".format(
+            max_det_state, max_det_score))
+        return max_det_state
 
     def get_classification(self, image):
         """Determines the color of the traffic light in the image
@@ -128,32 +168,25 @@ class TLClassifier(object):
         ### Detect traffic lights ###
         self.run_inference_for_single_image(image_np)
 
-        # Get the detected box with the highest score over minimum threshold
-        MIN_THRESHOLD = 0.50
+        vis_util.visualize_boxes_and_labels_on_image_array(
+            image_np,
+            np.squeeze(self.detection_boxes),
+            np.squeeze(self.detection_classes).astype(np.int32),
+            np.squeeze(self.detection_scores),
+            self.category_index,
+            use_normalized_coordinates=True,
+            min_score_thresh=self.MIN_SCORE_THRESHOLD,
+            line_thickness=3)
 
-        max_score_indx = np.argmax(self.detection_scores)
-        score = self.detection_scores[max_score_indx]
-        clazz = self.detection_classes[max_score_indx]
+        self.visualize_image = image_np
 
-        if score > MIN_THRESHOLD:
+        predicted_state = self.predict_state()
 
-            vis_util.visualize_boxes_and_labels_on_image_array(
-                image_np,
-                np.squeeze(self.detection_boxes),
-                np.squeeze(self.detection_classes).astype(np.int32),
-                np.squeeze(self.detection_scores),
-                self.category_index,
-                use_normalized_coordinates=True,
-                min_score_thresh=MIN_THRESHOLD,
-                line_thickness=3)
-
-            self.visualize_image = image_np
-
-            if clazz == 1:
-                return TrafficLight.GREEN
-            elif clazz == 2:
-                return TrafficLight.RED
-            elif clazz == 3:
-                return TrafficLight.YELLOW
+        if predicted_state == "Red":
+            return TrafficLight.RED
+        elif predicted_state == "Yellow":
+            return TrafficLight.YELLOW
+        elif predicted_state == "Green":
+            return TrafficLight.GREEN
 
         return TrafficLight.UNKNOWN
