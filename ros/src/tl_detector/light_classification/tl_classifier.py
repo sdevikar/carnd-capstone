@@ -7,6 +7,8 @@ import tensorflow as tf
 import zipfile
 import rospy
 import time
+import calendar
+import cv2
 
 from utils import label_map_util
 from utils import visualization_utils as vis_util
@@ -24,7 +26,7 @@ class TLClassifier(object):
         self.visualize_image = None
         self.label_map = None
         self.category_index = None
-        self.MIN_SCORE_THRESHOLD = 0.60
+        self.MIN_SCORE_THRESHOLD = 0.40
         self.NUM_CLASSES = 4
 
         if self.is_real:
@@ -138,7 +140,7 @@ class TLClassifier(object):
                 det_count += 1
 
         max_det_score = 0
-        max_det_state = None
+        max_det_state = "Unknown"
         for key in det_scores.keys():
             # Normalize the scores
             if det_count > 0:
@@ -149,9 +151,20 @@ class TLClassifier(object):
                 max_det_state = key
 
         rospy.loginfo(det_scores)
-        rospy.loginfo("Predicted state: {} Normalized scroe: {}".format(
+        rospy.loginfo("Predicted state: {}   Normalized score: {}".format(
             max_det_state, max_det_score))
         return max_det_state
+
+    def save_visualization(self, state):
+        # use timestamp to make unique filenames
+        f_name = "tl_{}_{}.jpg".format(calendar.timegm(time.gmtime()),
+            state)
+        dir = 'data/visual'
+        if not os.path.exists(dir):
+            os.makedirs(dir)
+        pathname = '{}/{}'.format(dir, f_name)
+        cv2.imwrite(pathname, self.visualize_image)
+
 
     def get_classification(self, image):
         """Determines the color of the traffic light in the image
@@ -181,6 +194,9 @@ class TLClassifier(object):
         self.visualize_image = image_np
 
         predicted_state = self.predict_state()
+
+        if TLClassifier.VISUALIZE:
+            self.save_visualization(predicted_state)
 
         if predicted_state == "Red":
             return TrafficLight.RED

@@ -14,6 +14,7 @@ import yaml
 import os
 import calendar
 import time
+import threading
 
 STATE_COUNT_THRESHOLD = 3
 GENERATE_TRAIN_IMGS = False
@@ -61,9 +62,6 @@ class TLDetector(object):
         self.last_wp = -1
         self.state_count = 0
 
-        #training img file counter
-        self.train_img_count = 0
-
         rospy.spin()
 
     def pose_cb(self, msg):
@@ -81,7 +79,7 @@ class TLDetector(object):
 
     def create_training_data(self, state):
         # build file name
-        f_name = "sim_tl_{:03d}_{}.jpg".format(self.train_img_count, state)
+        f_name = "sim_tl_{}_{}.jpg".format(calendar.timegm(time.gmtime()), state)
         dir = './data/train/sim'
 
         if not os.path.exists(dir):
@@ -90,17 +88,6 @@ class TLDetector(object):
         cv_image = self.bridge.imgmsg_to_cv2(self.camera_image)
         cv_image = cv_image[:, :, ::-1]
         cv2.imwrite('{}/{}'.format(dir, f_name), cv_image)
-        self.train_img_count += 1
-
-    def save_visualization(self, light_wp, state):
-        # use timestamp to make unique filenames
-        f_name = "tl_{}_{:03d}_{}.jpg".format(calendar.timegm(time.gmtime()),
-            light_wp, self.light_label(state))
-        dir = './data/visual'
-        if not os.path.exists(dir):
-            os.makedirs(dir)
-        pathname = '{}/{}'.format(dir, f_name)
-        cv2.imwrite(pathname, self.light_classifier.visualize_image)
 
     def image_cb(self, msg):
         """Identifies red lights in the incoming camera image and publishes the index
@@ -141,8 +128,6 @@ class TLDetector(object):
             rospy.loginfo("publish upcoming red light wp index: {}".format(self.last_wp))
         self.state_count += 1
 
-        if TLClassifier.VISUALIZE:
-            self.save_visualization(light_wp, state)
 
     def get_closest_waypoint(self, x, y):
         """Identifies the closest path waypoint to the given position
