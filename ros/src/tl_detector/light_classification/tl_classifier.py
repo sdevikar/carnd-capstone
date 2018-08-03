@@ -1,10 +1,7 @@
 from styx_msgs.msg import TrafficLight
 import numpy as np
 import os
-import six.moves.urllib as urllib
-import tarfile
 import tensorflow as tf
-import zipfile
 import rospy
 import time
 import calendar
@@ -37,32 +34,13 @@ class TLClassifier(object):
             rospy.loginfo("In simulator environment...use {}".format(MODEL_NAME))
 
         CLASSIFIER_BASE = os.path.dirname(os.path.realpath(__file__))
-        PATH_TO_CKPT = CLASSIFIER_BASE + '/' + MODEL_NAME + '/frozen_inference_graph.pb'
+        #GRAPH = 'frozen_inference_graph.pb'
+        GRAPH = 'quantized_optimized_inference_graph.pb'
+        PATH_TO_CKPT = CLASSIFIER_BASE + '/' + MODEL_NAME + '/' + GRAPH
         PATH_TO_LABELS = CLASSIFIER_BASE + '/label_map.pbtxt'
 
 
-        """
-        #MODEL_FILE = "{}.tar.gz".format(MODEL_NAME)
-        #DOWNLOAD_BASE = \
-        #    'http://download.tensorflow.org/models/object_detection/'
-
-        # TODO: figure out how we make the models available
-        #   Do we store them git repo? or do we upload them
-        #   somewhere and have them hosted somewhere(google drive?)?
-
-        ### Download the model file if not already there
-        if not os.path.exists(MODEL_FILE):
-            print("Downloading {}".format(DOWNLOAD_BASE + MODEL_FILE))
-            opener = urllib.request.URLopener()
-            opener.retrieve(DOWNLOAD_BASE + MODEL_FILE, MODEL_FILE)
-            tar_file = tarfile.open(MODEL_FILE)
-            for file in tar_file.getmembers():
-                file_name = os.path.basename(file.name)
-                if 'frozen_inference_graph.pb' in file_name:
-                    tar_file.extract(file, os.getcwd())
-        """
-
-        ### Load frozen Tensorflow model graph
+        ### Load Tensorflow model graph
         self.detection_graph = tf.Graph()
         with self.detection_graph.as_default():
             od_graph_def = tf.GraphDef()
@@ -179,7 +157,9 @@ class TLClassifier(object):
         image_np = np.asarray(image, dtype="int32")
 
         ### Detect traffic lights ###
+        start_t = time.time()
         self.run_inference_for_single_image(image_np)
+        rospy.loginfo('Inference time: {}s'.format(time.time() - start_t))
 
         vis_util.visualize_boxes_and_labels_on_image_array(
             image_np,

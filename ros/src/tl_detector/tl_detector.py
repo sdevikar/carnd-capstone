@@ -14,9 +14,9 @@ import yaml
 import os
 import calendar
 import time
-import threading
 
-STATE_COUNT_THRESHOLD = 3
+
+STATE_COUNT_THRESHOLD = 2
 GENERATE_TRAIN_IMGS = False
 
 class TLDetector(object):
@@ -78,8 +78,7 @@ class TLDetector(object):
         self.lights = msg.lights
 
     def create_training_data(self, state):
-        # build file name
-        f_name = "sim_tl_{}_{}.jpg".format(calendar.timegm(time.gmtime()), state)
+        f_name = "sim_tl_{}_{}.jpg".format(calendar.timegm(time.gmtime()), light_label(state))
         dir = './data/train/sim'
 
         if not os.path.exists(dir):
