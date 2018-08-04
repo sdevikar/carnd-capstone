@@ -96,7 +96,6 @@ class WaypointUpdater(object):
 
         closest_idx = self.get_closest_waypoint_idx()
         farthest_idx = closest_idx + LOOKAHEAD_WPS
-        #sdevikar: experimental
         base_waypoints = self.base_lane.waypoints[closest_idx:farthest_idx]
 
         #rospy.logdebug('\nsdevikar: generate_lane called - closest_idx:%d, farthest_idx:%d, stopline_wp_idx:%d', closest_idx, farthest_idx, self.stopline_wp_idx)
@@ -112,16 +111,19 @@ class WaypointUpdater(object):
         return lane
 
     def decelerate_waypoints(self, waypoints, closest_idx):
-        #rospy.logdebug('\nsdevikar: Enter decelerate_waypoints with waypoints length:%d ', len(waypoints))
+        #rospy.logfatal('\nsdevikar: Enter decelerate_waypoints with waypoints length:%d closet idx : %d', len(waypoints), closest_idx)
+        #rospy.logfatal('stopline idx is %d and closest idx is %d',self.stopline_wp_idx, closest_idx)
         temp = []
+        count = 0
         for i, wp in enumerate(waypoints):
 
             p = Waypoint()
 	        #position of the waypoint stays the same as base waypoint
             p.pose = wp.pose
-
+            #rospy.logfatal('waypoint x y z is %d', wp.pose.pose.position.x)
             # calculate a stop waypoint so that car's nose stops at the stop waypoint
             wpts_count_before_stopline = self.stopline_wp_idx - closest_idx
+            
             wpts_count_before_stopline_to_nose = wpts_count_before_stopline - 3
             stop_idx = max(wpts_count_before_stopline_to_nose, 0)
 
@@ -131,11 +133,22 @@ class WaypointUpdater(object):
 
             #distance between current waypoint and intended stop line waypoint
             dist = self.distance(waypoints, i, stop_idx)
-
+            #rospy.logfatal('Distance is %d', dist)
             # calculate velocity for this waypoint by factoring in the distance
             # to stop waypoint and the desired deceleration
-            vel = math.sqrt(2 * MAX_DECEL * dist)
-
+            #vel = math.sqrt(2 * MAX_DECEL * dist)
+            if dist <= 1:
+                vel = 0
+            elif dist <=5:
+                vel = math.sqrt(2 * MAX_DECEL * dist)
+            else:    
+                vel = wp.twist.twist.linear.x - (wp.twist.twist.linear.x/dist)
+            if count < 4:
+                #rospy.logfatal('Distance is %d and vel is %f and curr vel is %f', dist, vel, wp.twist.twist.linear.x)
+			count = count + 1
+            #rospy.logfatal('Vel is %d', vel)
+            #trying a constant reduction of speed instead of sqrt
+            # vel = 0.5*(2 * MAX_DECEL * dist)
             if vel < 1.:
                 vel = 0.
 
@@ -181,7 +194,9 @@ class WaypointUpdater(object):
         dist = 0
         dl = lambda a, b: math.sqrt((a.x-b.x)**2 + (a.y-b.y)**2  + (a.z-b.z)**2)
         for i in range(wp1, wp2+1):
+            #rospy.logfatal('first point is %f, second point is %f', waypoints[wp1].pose.pose.position.x,                             waypoints[i].pose.pose.position.x)
             dist += dl(waypoints[wp1].pose.pose.position, waypoints[i].pose.pose.position)
+            #rospy.logfatal('dist is %f', dist)
             wp1 = i
         return dist
 
