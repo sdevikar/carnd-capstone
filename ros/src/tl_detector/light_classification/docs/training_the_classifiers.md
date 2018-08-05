@@ -10,15 +10,13 @@ For TensorFlow 1.3 compatibility - branch `1f34fcafc1454e0d31ab4a6cc022102a54ac0
 This branch includes TensorFlow pretrained models that were generated with an earlier version of Tensorflow.
 ```
 
-```
 For TensorFlow's Object Detection API installation instructions, see:
-
+```
   https://github.com/tensorflow/models/blob/1f34fcafc1454e0d31ab4a6cc022102a54ac0f5b/research/object_detection/g3doc/installation.md
 ```
 
-```
 For instructions to train/fine-tune the pretrained object detection models, see:
-
+```
   https://github.com/smasoudn/traffic_light_detection
 ```
 ---
