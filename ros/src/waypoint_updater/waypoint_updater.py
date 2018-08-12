@@ -25,7 +25,7 @@ TODO (for Yousuf and Aaron): Stopline location for each traffic light.
 '''
 
 #LOOKAHEAD_WPS = 200 # Number of waypoints we will publish. You can change this number
-LOOKAHEAD_WPS = 75 # Number of waypoints we will publish. You can change this number
+LOOKAHEAD_WPS = 100 # Number of waypoints we will publish. You can change this number
 MAX_DECEL = .5
 
 class WaypointUpdater(object):
@@ -39,6 +39,7 @@ class WaypointUpdater(object):
         self.stopline_wp_idx  = -1
         self.waypoints_2d = None
         self.waypoint_tree = None
+        self.track_waypoint_count = -1
 
         rospy.Subscriber('/current_pose', PoseStamped, self.pose_cb)
         rospy.Subscriber('/base_waypoints', Lane, self.waypoints_cb)
@@ -88,24 +89,45 @@ class WaypointUpdater(object):
 
 
     def publish_waypoints(self):
+        if self.track_waypoint_count == -1:
+            return
         final_lane = self.generate_lane()
         self.final_waypoints_pub.publish(final_lane)
 
     def generate_lane(self):
+
         lane = Lane()
 
         closest_idx = self.get_closest_waypoint_idx()
         farthest_idx = closest_idx + LOOKAHEAD_WPS
-        base_waypoints = self.base_lane.waypoints[closest_idx:farthest_idx]
 
-        #rospy.logdebug('\nsdevikar: generate_lane called - closest_idx:%d, farthest_idx:%d, stopline_wp_idx:%d', closest_idx, farthest_idx, self.stopline_wp_idx)
+        if farthest_idx < self.track_waypoint_count:
+            base_waypoints = self.base_lane.waypoints[closest_idx:farthest_idx]
+            #rospy.logfatal('\nNormal closest_idx: %d, farthest_idx:%d, length of self.base_lane.waypoints :%d', closest_idx, farthest_idx, len(base_waypoints))
+        else:
+            rospy.logfatal("WP lookahead passed end of track!!!")
+            offset = farthest_idx - self.track_waypoint_count
+            farthest_idx = self.track_waypoint_count
+            base_waypoints = self.base_lane.waypoints[closest_idx:farthest_idx]
+
+            base_waypoints = base_waypoints + self.base_lane.waypoints[0:offset]
+            #rospy.logfatal('\nError! closest_idx: %d, farthest_idx:%d, length of self.base_lane.waypoints :%d', closest_idx, farthest_idx, len(base_waypoints))
+
+
+        #if(len(base_waypoints) != LOOKAHEAD_WPS):
+            #rospy.logfatal('\nError! closest_idx: %d, farthest_idx:%d, length of self.base_lane.waypoints :%d', closest_idx, farthest_idx, len(base_waypoints))
+
+        #rospy.loginfo('\nsdevikar: generate_lane called - closest_idx:%d, farthest_idx:%d, stopline_wp_idx:%d', closest_idx, farthest_idx, self.stopline_wp_idx)
         # keep the base waypoints as final_waypoints if the traffic light is
         # not in sight or too far
-        if (self.stopline_wp_idx == -1) or (self.stopline_wp_idx >= farthest_idx):
+        if (self.stopline_wp_idx == -1):
+            lane.waypoints = base_waypoints
+        elif (self.stopline_wp_idx >= farthest_idx):
+            #rospy.logfatal('\nsdevikar: Stop light detected,but out of range')
             lane.waypoints = base_waypoints
         else:
             # or else, decelerate_waypoint velocities accordingly
-            #rospy.logdebug('\nsdevikar: decelerating!!')
+            #rospy.loginfo('\nsdevikar: decelerating!!')
             lane.waypoints = self.decelerate_waypoints(base_waypoints, closest_idx)
 
         return lane
@@ -123,12 +145,12 @@ class WaypointUpdater(object):
             #rospy.logfatal('waypoint x y z is %d', wp.pose.pose.position.x)
             # calculate a stop waypoint so that car's nose stops at the stop waypoint
             wpts_count_before_stopline = self.stopline_wp_idx - closest_idx
-            
+
             wpts_count_before_stopline_to_nose = wpts_count_before_stopline - 3
             stop_idx = max(wpts_count_before_stopline_to_nose, 0)
 
-            #rospy.logdebug('\nsdevikar: stop index turns out to be:%d ', stop_idx)
-            #rospy.logdebug('\nsdevikar: calculating distance between wp1:%d and wp2:%d ', i, stop_idx)
+            #rospy.loginfo('\nsdevikar: stop index turns out to be:%d ', stop_idx)
+            #rospy.loginfo('\nsdevikar: calculating distance between wp1:%d and wp2:%d ', i, stop_idx)
 
 
             #distance between current waypoint and intended stop line waypoint
@@ -141,7 +163,7 @@ class WaypointUpdater(object):
                 vel = 0
             elif dist <=5:
                 vel = math.sqrt(2 * MAX_DECEL * dist)
-            else:    
+            else:
                 vel = wp.twist.twist.linear.x - (wp.twist.twist.linear.x/dist)
             if count < 4:
                 #rospy.logfatal('Distance is %d and vel is %f and curr vel is %f', dist, vel, wp.twist.twist.linear.x)
@@ -168,7 +190,8 @@ class WaypointUpdater(object):
 
     def waypoints_cb(self, waypoints):
         # TODO: Implement
-        #rospy.logdebug('\nsdevikar: Enter waypoints_cb. Number of waypoints: %d',len(waypoints.waypoints))
+        #rospy.logfatal('\nsdevikar: Enter waypoints_cb. Number of waypoints: %d',len(waypoints.waypoints))
+        self.track_waypoint_count = len(waypoints.waypoints)
         self.base_lane = waypoints
         if not self.waypoints_2d:
             # construct a list of 2d co-ordinates from the waypoints
@@ -177,7 +200,6 @@ class WaypointUpdater(object):
 
 
     def traffic_cb(self, msg):
-        #rospy.logdebug('\nsdevikar: logdebug: Enter traffic_cb')
         self.stopline_wp_idx = msg.data
 
     def obstacle_cb(self, msg):
