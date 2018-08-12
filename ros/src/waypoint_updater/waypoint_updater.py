@@ -107,7 +107,7 @@ class WaypointUpdater(object):
         else:
             rospy.logfatal("WP lookahead passed end of track!!!")
             offset = farthest_idx - self.track_waypoint_count
-            farthest_idx = self.track_waypoint_count
+            farthest_idx = self.track_waypoint_count - 2
             base_waypoints = self.base_lane.waypoints[closest_idx:farthest_idx]
 
             base_waypoints = base_waypoints + self.base_lane.waypoints[0:offset]
