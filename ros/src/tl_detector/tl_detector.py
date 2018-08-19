@@ -54,7 +54,7 @@ class TLDetector(object):
         self.upcoming_red_light_pub = rospy.Publisher('/traffic_waypoint', Int32, queue_size=1)
 
         self.bridge = CvBridge()
-        self.light_classifier = TLClassifier(self.is_site)
+        self.light_classifier = TLClassifier()
         self.listener = tf.TransformListener()
 
         self.state = TrafficLight.UNKNOWN
@@ -78,7 +78,7 @@ class TLDetector(object):
         self.lights = msg.lights
 
     def create_training_data(self, state):
-        f_name = "sim_tl_{}_{}.jpg".format(calendar.timegm(time.gmtime()), light_label(state))
+        f_name = "sim_tl_{}_{}.jpg".format(calendar.timegm(time.gmtime()), self.light_label(state))
         dir = './data/train/sim'
 
         if not os.path.exists(dir):
@@ -172,8 +172,9 @@ class TLDetector(object):
             self.prev_light_loc = None
             return False
 
-        cv_image = self.bridge.imgmsg_to_cv2(self.camera_image)
-        cv_image = cv_image[:, :, ::-1] # swith layer to RGB from BGR
+        cv_image = self.bridge.imgmsg_to_cv2(self.camera_image, 'rgb8')
+        #cv_image = cv_image[:, :, ::-1] # switch layers B and R from BGR to RGB
+        #cv_image = cv2.cvtColor(cv_image, cv2.COLOR_BGR2RGB)
         classified_state = self.light_classifier.get_classification(cv_image)
 
         if self.is_simulator:
