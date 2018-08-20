@@ -180,9 +180,9 @@ class TLClassifier(object):
 
         """
         self.visualize_image = None
-        #image_np = np.asarray(image, dtype="int32")
-        image_np = np.array(image, dtype="int32").reshape(
-            (self.img_height, self.img_width, 3)).astype(np.uint8)
+        image_np = np.asarray(image, dtype="int32")
+        #image_np = np.array(image, dtype="int32").reshape(
+        #    (self.img_height, self.img_width, 3)).astype(np.uint8)
 
         ### Detect traffic lights ###
         start_t = time.time()
