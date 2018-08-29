@@ -87,3 +87,26 @@ Change models/research/object_detection/exporter.py line 71/72 from:
 ```python
   rewrite_options = rewriter_config_pb2.RewriterConfig()
 ```
+
+#### 5. Transform the frozen graph
+Optimize graph to improve inference speed. Quantize (update floats to 8-bit ints) to reduce the file size.
+```bash
+# from <tensorflow_source_home>/tensorflow
+
+>  MODEL_PATH=/home/alau/Projects/udacity/self-driving-car-nd/tf13_models/models/research/object_detection/udacity_capstone_sim/fine_tuned_models/ssd_inception_v2_coco_aug_ud_capstone_sim
+
+>  bazel-bin/tensorflow/tools/graph_transforms/transform_graph \
+   --in_graph=${MODEL_PATH}/frozen_inference_graph.pb \
+   --out_graph=${MODEL_PATH}/quantized_optimized_inference_graph.pb \
+   --inputs='image_tensor' \
+   --outputs='detection_boxes,detection_scores,detection_classes,num_detections' \
+   --transforms='
+     add_default_attributes
+     fold_constants(ignore_errors=true)
+     fold_batch_norms
+     fold_old_batch_norms
+     remove_nodes(op=CheckNumerics)
+     strip_unused_nodes
+     sort_by_execution_order
+     quantize_weights'
+```
